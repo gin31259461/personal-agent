@@ -2,8 +2,9 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from personal_agent import __version__
 from personal_agent.agent.runtime import AgentRuntime
-from personal_agent.config import Settings
+from personal_agent.config import ApplicationConfig, Settings
 from personal_agent.discord.bot import PersonalAgentBot
 from personal_agent.discord.handler import MessageAuthorizer
 from personal_agent.llm.client import LLMClient
@@ -38,7 +39,7 @@ async def _query_expenses(service: FinanceService, args: QueryExpensesArgs) -> T
 
 
 def build_runtime(settings: Settings) -> AgentRuntime:
-    notion = NotionClient(settings.notion_token)
+    notion = NotionClient(settings.notion_token.get_secret_value())
     tasks = TaskService(notion, settings.notion.tasks.data_source_id, settings.notion.tasks.properties)
     finance = FinanceService(notion, settings.notion.finance.data_source_id, settings.notion.finance.properties)
     registry = ToolRegistry()
@@ -79,7 +80,11 @@ def build_runtime(settings: Settings) -> AgentRuntime:
         )
     )
     llm = LLMClient(
-        settings.llm.base_url, settings.llm.model, settings.llm.temperature, settings.llm.max_tokens, settings.llm.timeout_seconds
+        str(settings.llm.base_url),
+        settings.llm.model,
+        settings.llm.temperature,
+        settings.llm.max_tokens,
+        settings.llm.timeout_seconds,
     )
     return AgentRuntime(llm, registry, ToolExecutor(registry, Policy()), settings.app.timezone, settings.app.max_tool_iterations)
 
@@ -89,24 +94,39 @@ async def run(settings: Settings) -> None:
     await database.create_schema()
     runtime = build_runtime(settings)
     bot = PersonalAgentBot(
-        settings.discord_token,
+        settings.discord_token.get_secret_value(),
         MessageAuthorizer(settings.discord.guild_id, settings.discord.channel_id, settings.discord.owner_user_ids),
         runtime,
         database,
     )
     try:
-        await bot.start(settings.discord_token)
+        await bot.start(settings.discord_token.get_secret_value())
     finally:
         await database.close()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=Path, default=Path("config.toml"))
-    parser.add_argument("--env-file", type=Path, default=Path(".env"))
+    parser.add_argument("--version", action="version", version=__version__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    run_parser = commands.add_parser("run")
+    run_parser.add_argument("--config", type=Path, default=Path("config.toml"))
+    run_parser.add_argument("--env-file", type=Path)
+    config_parser = commands.add_parser("check-config")
+    config_parser.add_argument("--config", type=Path, required=True)
+    runtime_parser = commands.add_parser("check-runtime")
+    runtime_parser.add_argument("--config", type=Path, required=True)
+    runtime_parser.add_argument("--env-file", type=Path)
     args = parser.parse_args()
-    env_file = args.env_file if args.env_file.exists() else None
+    if args.command == "check-config":
+        ApplicationConfig.from_toml(args.config)
+        print("Personal Agent configuration is valid")
+        return
+    env_file = args.env_file if args.env_file and args.env_file.exists() else None
     settings = Settings.from_toml(args.config, env_file)
+    if args.command == "check-runtime":
+        print("Personal Agent runtime configuration is valid")
+        return
     asyncio.run(run(settings))
 
 

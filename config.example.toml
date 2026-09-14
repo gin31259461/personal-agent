@@ -16,7 +16,7 @@ max_tokens = 4096
 timeout_seconds = 60
 
 [notion.tasks]
-data_source_id = ""
+data_source_id = "replace-with-tasks-data-source-id"
 
 [notion.tasks.properties]
 title = "Name"
@@ -26,7 +26,7 @@ priority = "Priority"
 description = "Description"
 
 [notion.finance]
-data_source_id = ""
+data_source_id = "replace-with-finance-data-source-id"
 
 [notion.finance.properties]
 title = "Item Name"

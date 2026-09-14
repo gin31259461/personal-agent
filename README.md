@@ -10,6 +10,21 @@ Personal Discord assistant backed by an OpenAI-compatible llama-swap endpoint an
 - Restrict requests to configured Discord users in one guild and channel.
 - Convert supported Markdown headings, lists, checkboxes, quotes, code blocks, emphasis, inline code, and links into Notion blocks.
 
+## Nix package
+
+The flake builds the application and its exact `uv.lock` dependency graph with
+uv2nix. Production does not create a virtual environment or resolve packages at
+runtime.
+
+```bash
+nix flake check --show-trace --print-build-logs
+nix build --no-link --show-trace --print-build-logs .#personal-agent
+```
+
+The flake exposes `packages.x86_64-linux.personal-agent` and a default development
+shell. Host configuration, systemd ownership and runtime files deliberately remain
+outside this application repository.
+
 ## Development
 
 Requirements: Python 3.13 and `uv`.
@@ -26,7 +41,7 @@ uv run mypy src
 Run locally after filling `config.toml` and `.env`:
 
 ```bash
-uv run personal-agent --config ./config.toml --env-file ./.env
+uv run --env-file ./.env personal-agent run --config ./config.toml
 ```
 
 The environment file contains `DISCORD_TOKEN` and `NOTION_TOKEN`. Never commit it.
@@ -50,35 +65,20 @@ priority = "Priority"
 
 `owner_user_ids` may contain multiple Discord user IDs. The task tool uses structured output: `description` is a short optional summary and `body` is the optional full Markdown content. If no description is supplied, the Notion Description property remains empty; if no body is supplied, no page body blocks are added.
 
-## Arch Linux deployment
+## Deployment contract
 
-The installer creates the `personal-agent` service account, installs the managed Python runtime in a service-readable path, synchronizes the locked environment, installs the systemd unit, and starts the service.
+The production host owns the `personal-agent` account, systemd unit and runtime
+directories. It supplies `/etc/personal-agent/config.toml`, exposes
+`DISCORD_TOKEN` and `NOTION_TOKEN` in the process environment, and keeps SQLite
+state under `/var/lib/personal-agent`. Those mutable files and credentials never
+enter this repository or the Nix store.
 
-Prepare `.env` beside `install.sh` on a first install, then run:
-
-```bash
-sudo ./install.sh
-```
-
-The installer preserves existing production configuration and `/var/lib/personal-agent`. It stores configuration in `/etc/personal-agent/` and runtime SQLite state in `/var/lib/personal-agent/`.
-
-On the first install, `config.example.toml` is copied to `/etc/personal-agent/config.toml`; edit that production file with the real Discord, llama-swap, and Notion settings before using the service. Later installs preserve it and validate it before starting the service. The repository-local `config.toml` is ignored and is not a deployment source.
-
-Useful operations:
+Validate a prepared configuration without contacting external services:
 
 ```bash
-sudo systemctl status personal-agent.service
-sudo systemctl restart personal-agent.service
-sudo journalctl -u personal-agent.service -f
+personal-agent check-config --config /etc/personal-agent/config.toml
+personal-agent check-runtime --config /etc/personal-agent/config.toml
 ```
-
-Remove the service and application files while retaining configuration and state:
-
-```bash
-sudo ./uninstall.sh
-```
-
-Use `sudo ./uninstall.sh --purge` only when configuration and runtime state should also be removed.
 
 ## Architecture
 

@@ -7,8 +7,8 @@ This repository contains a single-host Discord assistant. Discord is the transpo
 ## Source of truth
 
 - Runtime behavior is defined by `src/personal_agent/`.
-- Dependency versions are defined by `pyproject.toml` and `uv.lock`.
-- `config.example.toml` documents configuration shape. Production configuration lives at `/etc/personal-agent/config.toml` and is intentionally preserved by `install.sh`.
+- Dependency constraints are defined by `pyproject.toml`; `uv.lock` fixes the Python dependency graph used by uv2nix and local uv development.
+- `config.example.toml` documents configuration shape. Production configuration lives outside the repository at `/etc/personal-agent/config.toml`.
 - `.env`, `/etc/personal-agent/agent.env`, tokens, and database files are sensitive; never print, commit, or include their values in logs or tests.
 
 ## Safety boundaries
@@ -30,6 +30,8 @@ uv sync --locked
 uv run pytest -q
 uv run ruff check src tests
 uv run mypy src
+nix flake check --show-trace --print-build-logs
+nix build --no-link --show-trace --print-build-logs .#personal-agent
 git diff --check
 ```
 
