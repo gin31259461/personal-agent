@@ -1,0 +1,23 @@
+[Unit]
+Description=Personal Discord AI Agent
+After=network-online.target
+
+[Service]
+Type=simple
+User=personal-agent
+Group=personal-agent
+WorkingDirectory=/opt/personal-agent
+EnvironmentFile=/etc/personal-agent/agent.env
+ExecStart=/opt/personal-agent/.venv/bin/python -m personal_agent.main \
+  --config /etc/personal-agent/config.toml \
+  --env-file /etc/personal-agent/agent.env
+Restart=on-failure
+RestartSec=5
+StateDirectory=personal-agent
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

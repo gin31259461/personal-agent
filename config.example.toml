@@ -1,0 +1,35 @@
+[app]
+timezone = "Asia/Taipei"
+max_tool_iterations = 5
+database_url = "sqlite+aiosqlite:////var/lib/personal-agent/agent.db"
+
+[discord]
+guild_id = 123456789
+channel_id = 123456789
+owner_user_ids = [123456789]
+
+[llm]
+base_url = "http://127.0.0.1:8080/v1"
+model = "Qwen3.6-35B-A3B"
+temperature = 0.2
+max_tokens = 4096
+timeout_seconds = 60
+
+[notion.tasks]
+data_source_id = ""
+
+[notion.tasks.properties]
+title = "Name"
+status = "Status"
+due_date = "Due"
+priority = "Priority"
+description = "Description"
+
+[notion.finance]
+data_source_id = ""
+
+[notion.finance.properties]
+title = "Item Name"
+amount = "Amount"
+date = "Date"
+type = "Type"
