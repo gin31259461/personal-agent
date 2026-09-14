@@ -54,13 +54,15 @@ priority = "Priority"
 
 The installer creates the `personal-agent` service account, installs the managed Python runtime in a service-readable path, synchronizes the locked environment, installs the systemd unit, and starts the service.
 
-Prepare `config.toml` and `.env` beside `install.sh`, then run:
+Prepare `.env` beside `install.sh` on a first install, then run:
 
 ```bash
 sudo ./install.sh
 ```
 
 The installer preserves existing production configuration and `/var/lib/personal-agent`. It stores configuration in `/etc/personal-agent/` and runtime SQLite state in `/var/lib/personal-agent/`.
+
+On the first install, `config.example.toml` is copied to `/etc/personal-agent/config.toml`; edit that production file with the real Discord, llama-swap, and Notion settings before using the service. Later installs preserve it and validate it before starting the service. The repository-local `config.toml` is ignored and is not a deployment source.
 
 Useful operations:
 

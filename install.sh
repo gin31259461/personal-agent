@@ -23,8 +23,7 @@ command -v systemctl >/dev/null 2>&1 || die "systemd is required"
 
 [[ -f "${SCRIPT_DIR}/pyproject.toml" ]] || die "pyproject.toml not found beside install.sh"
 [[ -f "${SCRIPT_DIR}/uv.lock" ]] || die "uv.lock not found beside install.sh"
-[[ -f "${SCRIPT_DIR}/config.toml" ]] || die "config.toml is required beside install.sh"
-[[ -f "${SCRIPT_DIR}/.env" ]] || die ".env is required beside install.sh"
+[[ -f "${SCRIPT_DIR}/config.example.toml" ]] || die "config.example.toml not found beside install.sh"
 
 if ! getent group "${APP_GROUP}" >/dev/null; then
   groupadd --system "${APP_GROUP}"
@@ -47,11 +46,15 @@ chown -R "${APP_USER}:${APP_GROUP}" "${APP_DIR}"
 
 if [[ ! -f "${CONFIG_DIR}/config.toml" ]]; then
   install -m 0640 -o root -g "${APP_GROUP}" \
-    "${SCRIPT_DIR}/config.toml" "${CONFIG_DIR}/config.toml"
+    "${SCRIPT_DIR}/config.example.toml" "${CONFIG_DIR}/config.toml"
+  printf 'created %s from config.example.toml; edit it before using the service\n' "${CONFIG_DIR}/config.toml"
 else
   printf 'keeping existing %s\n' "${CONFIG_DIR}/config.toml"
 fi
 
+if [[ ! -f "${CONFIG_DIR}/agent.env" && ! -f "${SCRIPT_DIR}/.env" ]]; then
+  die "${CONFIG_DIR}/agent.env or .env is required"
+fi
 if [[ ! -f "${CONFIG_DIR}/agent.env" ]]; then
   install -m 0640 -o root -g "${APP_GROUP}" \
     "${SCRIPT_DIR}/.env" "${CONFIG_DIR}/agent.env"
@@ -91,6 +94,9 @@ chown -R "${APP_USER}:${APP_GROUP}" "${APP_DIR}"
 [[ -x "${VENV_DIR}/bin/python" ]] || die "virtualenv interpreter was not created: ${VENV_DIR}/bin/python"
 sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" --version >/dev/null \
   || die "${APP_USER} cannot execute ${VENV_DIR}/bin/python"
+sudo -u "${APP_USER}" "${VENV_DIR}/bin/python" -c \
+  'from pathlib import Path; from personal_agent.config import Settings; Settings.from_toml(Path("/etc/personal-agent/config.toml"), Path("/etc/personal-agent/agent.env"))' \
+  || die "production configuration validation failed: ${CONFIG_DIR}/config.toml"
 
 install -m 0644 "${SCRIPT_DIR}/deploy/personal-agent.service" "${SERVICE_FILE}"
 systemctl daemon-reload
