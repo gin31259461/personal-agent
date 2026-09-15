@@ -9,6 +9,8 @@ Personal Discord assistant backed by an OpenAI-compatible llama-swap endpoint an
 - Show `Pending`, `Done`, and `Failed` status in Discord while a request is processed.
 - Restrict requests to configured Discord users in one guild and channel.
 - Convert supported Markdown headings, lists, checkboxes, quotes, code blocks, emphasis, inline code, and links into Notion blocks.
+- Resolve Task projects and transaction categories/accounts through validated Notion relations.
+- Search configured Notion data sources and optionally search the web through a fixed SearXNG endpoint.
 
 ## Nix package
 
@@ -44,7 +46,12 @@ Run locally after filling `config.toml` and `.env`:
 uv run --env-file ./.env personal-agent run --config ./config.toml
 ```
 
-The environment file contains `DISCORD_TOKEN` and `NOTION_TOKEN`. Never commit it.
+The environment file contains `DISCORD_TOKEN` and `NOTION_TOKEN`. Never commit it. Model preferences default to
+`personal_agent/agent/default_preferences.md`; set `app.instructions_path` to load an external UTF-8 file at startup.
+
+Normal conversation uses Discord's typing indicator and receives a direct reply. A visible `Thinking` status is only
+created after the model requests a tool; it becomes `Done` or `Failed`. Structured clarification state expires after
+`app.clarification_ttl_seconds` and does not expose general Discord history to the model.
 
 ## Configuration
 

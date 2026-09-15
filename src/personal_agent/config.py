@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,6 +13,9 @@ class AppSettings(StrictModel):
     timezone: str = "Asia/Taipei"
     max_tool_iterations: Annotated[int, Field(gt=0, le=20)] = 5
     database_url: str = "sqlite+aiosqlite:///./agent.db"
+    clarification_ttl_seconds: Annotated[int, Field(gt=0, le=86400)] = 600
+    instructions_path: Path | None = None
+    instructions_max_bytes: Annotated[int, Field(gt=0, le=1048576)] = 32768
 
 
 class DiscordSettings(StrictModel):
@@ -44,14 +47,26 @@ class NotionDatabaseSettings(StrictModel):
 class NotionSettings(StrictModel):
     tasks: NotionDatabaseSettings
     finance: NotionDatabaseSettings
+    projects: NotionDatabaseSettings | None = None
+    categories: NotionDatabaseSettings | None = None
+    accounts: NotionDatabaseSettings | None = None
+
+
+class WebSearchSettings(StrictModel):
+    enabled: bool = False
+    provider: Literal["searxng"] = "searxng"
+    base_url: HttpUrl = HttpUrl("http://127.0.0.1:8888")
+    timeout_seconds: Annotated[float, Field(gt=0, le=60)] = 15
+    max_results: Annotated[int, Field(gt=0, le=25)] = 10
+    max_response_bytes: Annotated[int, Field(gt=1024, le=1048576)] = 262144
 
 
 class ApplicationConfig(StrictModel):
-
     app: AppSettings
     discord: DiscordSettings
     llm: LLMSettings = LLMSettings()
     notion: NotionSettings
+    web_search: WebSearchSettings = WebSearchSettings()
 
     @classmethod
     def from_toml(cls, path: Path) -> "ApplicationConfig":

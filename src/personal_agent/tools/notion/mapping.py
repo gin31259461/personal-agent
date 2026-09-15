@@ -1,4 +1,5 @@
 import re
+from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -23,8 +24,27 @@ def date_property(name: str, value: date | datetime) -> dict[str, object]:
     return {name: {"date": {"start": value.isoformat()}}}
 
 
+def date_range_property(name: str, start: date | datetime, end: date | datetime | None = None) -> dict[str, object]:
+    value = {"start": start.isoformat()}
+    if end is not None:
+        value["end"] = end.isoformat()
+    return {name: {"date": value}}
+
+
 def number_property(name: str, value: Decimal) -> dict[str, object]:
     return {name: {"number": float(value)}}
+
+
+def relation_property(name: str, page_ids: list[str]) -> dict[str, object]:
+    return {name: {"relation": [{"id": page_id} for page_id in page_ids]}}
+
+
+def people_property(name: str, user_ids: list[str]) -> dict[str, object]:
+    return {name: {"people": [{"object": "user", "id": user_id} for user_id in user_ids]}}
+
+
+def multi_select_property(name: str, values: Sequence[str]) -> dict[str, object]:
+    return {name: {"multi_select": [{"name": value} for value in values]}}
 
 
 def merge(*properties: dict[str, object]) -> dict[str, object]:
@@ -53,11 +73,13 @@ def paragraph_blocks(content: str) -> list[dict[str, object]]:
                 index += 1
             if index < len(lines):
                 index += 1
-            blocks.append({
-                "object": "block",
-                "type": "code",
-                "code": {"rich_text": _rich_text("\n".join(code_lines)), "language": language},
-            })
+            blocks.append(
+                {
+                    "object": "block",
+                    "type": "code",
+                    "code": {"rich_text": _rich_text("\n".join(code_lines)), "language": language},
+                }
+            )
             continue
 
         heading = re.match(r"^(#{1,3})\s+(.+)$", line)
@@ -69,11 +91,13 @@ def paragraph_blocks(content: str) -> list[dict[str, object]]:
 
         checkbox = re.match(r"^-\s+\[([ xX])\]\s+(.+)$", line)
         if checkbox:
-            blocks.append({
-                "object": "block",
-                "type": "to_do",
-                "to_do": {"rich_text": _rich_text(checkbox.group(2)), "checked": checkbox.group(1).lower() == "x"},
-            })
+            blocks.append(
+                {
+                    "object": "block",
+                    "type": "to_do",
+                    "to_do": {"rich_text": _rich_text(checkbox.group(2)), "checked": checkbox.group(1).lower() == "x"},
+                }
+            )
             continue
 
         bullet = re.match(r"^[-*+]\s+(.+)$", line)

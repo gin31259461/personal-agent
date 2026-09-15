@@ -2,6 +2,9 @@
 timezone = "Asia/Taipei"
 max_tool_iterations = 5
 database_url = "sqlite+aiosqlite:////var/lib/personal-agent/agent.db"
+clarification_ttl_seconds = 600
+# instructions_path = "/etc/personal-agent/instructions.md"
+instructions_max_bytes = 32768
 
 [discord]
 guild_id = 123456789
@@ -21,9 +24,17 @@ data_source_id = "replace-with-tasks-data-source-id"
 [notion.tasks.properties]
 title = "Name"
 status = "Status"
-due_date = "Due"
+due = "Due"
 priority = "Priority"
 description = "Description"
+project = "Project"
+parent_task = "Parent Task"
+sub_tasks = "Sub-Tasks"
+assignee = "Assignee"
+smart_list = "Smart List"
+recur_interval = "Recur Interval"
+recur_unit = "Recur Unit"
+recur_days = "Days (Only if Set to 1 Day(s))"
 
 [notion.finance]
 data_source_id = "replace-with-finance-data-source-id"
@@ -33,3 +44,28 @@ title = "Item Name"
 amount = "Amount"
 date = "Date"
 type = "Type"
+category = "Category"
+account = "Account"
+
+[notion.projects]
+data_source_id = "replace-with-projects-data-source-id"
+[notion.projects.properties]
+title = "Name"
+
+[notion.categories]
+data_source_id = "replace-with-categories-data-source-id"
+[notion.categories.properties]
+title = "Category Name"
+
+[notion.accounts]
+data_source_id = "replace-with-accounts-data-source-id"
+[notion.accounts.properties]
+title = "Account Name"
+
+[web_search]
+enabled = false
+provider = "searxng"
+base_url = "http://127.0.0.1:8888"
+timeout_seconds = 15
+max_results = 10
+max_response_bytes = 262144

@@ -4,15 +4,15 @@ from decimal import Decimal
 from pydantic import Field, field_validator
 
 from .common import StrictModel
+from .task import RelationRef
 
 
 class AddExpenseArgs(StrictModel):
     title: str = Field(min_length=1, max_length=500)
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     date: date
-    category: str | None = Field(default=None, max_length=200)
-    payment_method: str | None = Field(default=None, max_length=200)
-    note: str | None = Field(default=None, max_length=5000)
+    category: RelationRef | None = None
+    account: RelationRef | None = None
 
     @field_validator("title")
     @classmethod
@@ -21,3 +21,7 @@ class AddExpenseArgs(StrictModel):
         if not value:
             raise ValueError("title must not be empty")
         return value
+
+
+class AddTransactionArgs(AddExpenseArgs):
+    type: str = Field(default="Expense", pattern="^(Income|Expense)$")

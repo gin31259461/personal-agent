@@ -1,4 +1,3 @@
-
 import pytest
 
 from personal_agent.agent.tool_loop import run_tool_loop
@@ -20,9 +19,7 @@ class FakeLLM:
         self.messages.append([message.model_dump(exclude_none=True) for message in messages])
         self.calls += 1
         if self.calls == 1:
-            return AssistantResponse(
-                tool_calls=[ToolCall(id="call-1", name="task", arguments={"title": "買牛奶"})]
-            )
+            return AssistantResponse(tool_calls=[ToolCall(id="call-1", name="task", arguments={"title": "買牛奶"})])
         return AssistantResponse(content="已完成")
 
 
@@ -43,7 +40,8 @@ async def test_tool_call_is_serialized_for_follow_up_llm_request():
         max_iterations=2,
     )
 
-    assert result == "已完成"
+    assert result.content == "已完成"
+    assert result.used_tools is True
     assert llm.messages[1][1]["tool_calls"] == [
         {
             "id": "call-1",

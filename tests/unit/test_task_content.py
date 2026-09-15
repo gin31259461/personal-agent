@@ -15,6 +15,13 @@ class FakeNotion:
         return {"id": "page-id"}
 
 
+class FakeResolver:
+    async def resolve(self, data_source_id, title_property, reference):
+        from personal_agent.tools.notion.relations import ResolvedRelation
+
+        return ResolvedRelation("related-id", reference.name or "related")
+
+
 @pytest.mark.asyncio
 async def test_long_task_content_is_written_to_page_body():
     notion = FakeNotion()
@@ -22,9 +29,10 @@ async def test_long_task_content_is_written_to_page_body():
     result = await service.create(CreateTaskArgs(title="整理伺服器", description="更新套件", body="1. 更新套件\n2. 檢查服務"))
     assert result.success is True
     assert result.data["body_written"] is True
-    assert [
-        block["numbered_list_item"]["rich_text"][0]["text"]["content"] for block in notion.children
-    ] == ["更新套件", "檢查服務"]
+    assert [block["numbered_list_item"]["rich_text"][0]["text"]["content"] for block in notion.children] == [
+        "更新套件",
+        "檢查服務",
+    ]
 
 
 @pytest.mark.asyncio
@@ -78,3 +86,12 @@ async def test_description_and_body_remain_within_their_own_limits():
     description = notion.properties["Description"]["rich_text"][0]["text"]["content"]
     assert description == "長任務摘要"
     assert notion.children[0]["paragraph"]["rich_text"][0]["text"]["content"] == body
+
+
+@pytest.mark.asyncio
+async def test_task_project_is_written_as_relation():
+    notion = FakeNotion()
+    service = TaskService(notion, "tasks", {"title": "Name", "project": "Project"}, FakeResolver(), "projects")
+    result = await service.create(CreateTaskArgs(title="部署", project={"name": "Personal Agent"}))
+    assert result.success is True
+    assert notion.properties["Project"] == {"relation": [{"id": "related-id"}]}

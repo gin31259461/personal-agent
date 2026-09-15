@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, cast
 
 import httpx
@@ -13,6 +14,13 @@ class NotionError(Exception):
 class _RetryableNotionResponse(Exception):
     def __init__(self, status_code: int) -> None:
         self.status_code = status_code
+
+
+@dataclass(frozen=True)
+class NotionPage:
+    results: list[dict[str, Any]]
+    has_more: bool
+    next_cursor: str | None
 
 
 class NotionClient:
@@ -71,6 +79,33 @@ class NotionClient:
                 raise NotionError(f"NOTION_{response.status_code}", "Notion rejected the query")
             body = cast(dict[str, Any], response.json())
             return cast(list[dict[str, Any]], body.get("results", []))
+        except httpx.TimeoutException as exc:
+            raise NotionError("NOTION_TIMEOUT", "Notion API request timed out") from exc
+        except httpx.TransportError as exc:
+            raise NotionError("NOTION_NETWORK", "Notion API network error") from exc
+
+    async def retrieve_data_source(self, data_source_id: str) -> dict[str, Any]:
+        try:
+            response = await self._client.get(f"/data_sources/{data_source_id}")
+            if response.status_code >= 400:
+                raise NotionError(f"NOTION_{response.status_code}", "Notion rejected the schema request")
+            return cast(dict[str, Any], response.json())
+        except httpx.TimeoutException as exc:
+            raise NotionError("NOTION_TIMEOUT", "Notion API request timed out") from exc
+        except httpx.TransportError as exc:
+            raise NotionError("NOTION_NETWORK", "Notion API network error") from exc
+
+    async def search(self, query: str, page_size: int = 10) -> NotionPage:
+        try:
+            response = await self._client.post("/search", json={"query": query, "page_size": page_size})
+            if response.status_code >= 400:
+                raise NotionError(f"NOTION_{response.status_code}", "Notion rejected the search")
+            body = cast(dict[str, Any], response.json())
+            return NotionPage(
+                cast(list[dict[str, Any]], body.get("results", [])),
+                bool(body.get("has_more", False)),
+                cast(str | None, body.get("next_cursor")),
+            )
         except httpx.TimeoutException as exc:
             raise NotionError("NOTION_TIMEOUT", "Notion API request timed out") from exc
         except httpx.TransportError as exc:
