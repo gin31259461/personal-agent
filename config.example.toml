@@ -63,6 +63,7 @@ data_source_id = "replace-with-accounts-data-source-id"
 title = "Account Name"
 
 [web_search]
+# Legacy standalone switch. Nix deployments inject PERSONAL_AGENT_WEB_SEARCH_URL instead.
 enabled = false
 provider = "searxng"
 base_url = "http://127.0.0.1:8888"

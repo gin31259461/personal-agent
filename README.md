@@ -53,6 +53,10 @@ Normal conversation uses Discord's typing indicator and receives a direct reply.
 created after the model requests a tool; it becomes `Done` or `Failed`. Structured clarification state expires after
 `app.clarification_ttl_seconds` and does not expose general Discord history to the model.
 
+Nix-managed deployments enable web search by setting `PERSONAL_AGENT_WEB_SEARCH_URL`; its presence registers the
+tool. Standalone deployments may use the legacy `web_search.enabled` and `web_search.base_url` TOML settings. If both
+are set, their URLs must match.
+
 ## Configuration
 
 `config.toml` contains non-secret runtime configuration. Important sections:

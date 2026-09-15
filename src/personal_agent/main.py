@@ -104,9 +104,10 @@ def build_runtime(settings: Settings) -> AgentRuntime:
         )
     )
     closers = [notion.close]
-    if settings.web_search.enabled:
+    web_search_url = settings.web_search_url or (settings.web_search.base_url if settings.web_search.enabled else None)
+    if web_search_url is not None:
         web_search = SearxngSearchService(
-            str(settings.web_search.base_url),
+            str(web_search_url),
             settings.web_search.timeout_seconds,
             settings.web_search.max_results,
             settings.web_search.max_response_bytes,

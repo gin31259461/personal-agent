@@ -61,6 +61,12 @@ class WebSearchSettings(StrictModel):
     max_response_bytes: Annotated[int, Field(gt=1024, le=1048576)] = 262144
 
 
+class RuntimeCapabilities(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="PERSONAL_AGENT_", extra="ignore", hide_input_in_errors=True)
+
+    web_search_url: HttpUrl | None = None
+
+
 class ApplicationConfig(StrictModel):
     app: AppSettings
     discord: DiscordSettings
@@ -86,10 +92,21 @@ class RuntimeSecrets(BaseSettings):
 class Settings(ApplicationConfig):
     discord_token: SecretStr
     notion_token: SecretStr
+    web_search_url: HttpUrl | None = None
 
     @classmethod
     def from_toml(cls, path: Path, env_file: Path | None = None) -> "Settings":
         config = ApplicationConfig.from_toml(path)
         secrets_type = cast(Any, RuntimeSecrets)
         secrets = cast(RuntimeSecrets, secrets_type(_env_file=env_file))
-        return cls.model_validate(config.model_dump() | secrets.model_dump())
+        capabilities_type = cast(Any, RuntimeCapabilities)
+        capabilities = cast(RuntimeCapabilities, capabilities_type(_env_file=env_file))
+        data = config.model_dump() | secrets.model_dump() | capabilities.model_dump()
+        settings = cls.model_validate(data)
+        if (
+            settings.web_search_url is not None
+            and settings.web_search.enabled
+            and str(settings.web_search_url).rstrip("/") != str(settings.web_search.base_url).rstrip("/")
+        ):
+            raise ValueError("web search environment and legacy config URLs conflict")
+        return settings

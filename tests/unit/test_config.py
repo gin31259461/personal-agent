@@ -55,3 +55,22 @@ def test_runtime_settings_require_both_secrets(tmp_path: Path, monkeypatch: pyte
     with pytest.raises(ValidationError) as raised:
         Settings.from_toml(config, env)
     assert "synthetic-private" not in str(raised.value)
+
+
+def test_runtime_web_search_url_enables_managed_capability(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PERSONAL_AGENT_WEB_SEARCH_URL", "http://127.0.0.1:8888")
+    config = write(tmp_path / "config.toml", MINIMAL_CONFIG)
+    env = write(tmp_path / ".env", "DISCORD_TOKEN=discord\nNOTION_TOKEN=notion\n")
+    settings = Settings.from_toml(config, env)
+    assert str(settings.web_search_url) == "http://127.0.0.1:8888/"
+
+
+def test_managed_and_legacy_web_search_urls_must_match(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PERSONAL_AGENT_WEB_SEARCH_URL", "http://127.0.0.1:8888")
+    config = write(
+        tmp_path / "config.toml",
+        MINIMAL_CONFIG + '\n[web_search]\nenabled = true\nbase_url = "http://127.0.0.1:9999"\n',
+    )
+    env = write(tmp_path / ".env", "DISCORD_TOKEN=discord\nNOTION_TOKEN=notion\n")
+    with pytest.raises(ValueError, match="URLs conflict"):
+        Settings.from_toml(config, env)
