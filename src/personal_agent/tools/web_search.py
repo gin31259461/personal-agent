@@ -30,7 +30,12 @@ class SearxngSearchService:
         if args.freshness_days is not None:
             params["time_range"] = "day" if args.freshness_days <= 1 else "month"
         try:
-            response = await self.client.get(f"{self.base_url}/search", params=params)
+            headers = {
+                "X-Forwarded-For": "127.0.0.1",
+                "X-Real-IP": "127.0.0.1",
+                "User-Agent": "PersonalAgent/1.0",
+            }
+            response = await self.client.get(f"{self.base_url}/search", params=params, headers=headers)
             response.raise_for_status()
             if len(response.content) > self.max_response_bytes:
                 return ToolResult.fail("WEB_SEARCH_TOO_LARGE", "Web search response exceeded the configured limit")
