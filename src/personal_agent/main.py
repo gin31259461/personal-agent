@@ -4,7 +4,8 @@ from pathlib import Path
 
 from personal_agent import __version__
 from personal_agent.agent.runtime import AgentRuntime
-from personal_agent.config import ApplicationConfig, Settings
+from personal_agent.config import ApplicationConfig, NotionUserDatabases, Settings
+from personal_agent.context import current_discord_user_id
 from personal_agent.discord.bot import PersonalAgentBot
 from personal_agent.discord.handler import MessageAuthorizer
 from personal_agent.llm.client import LLMClient
@@ -23,6 +24,41 @@ from personal_agent.tools.notion.tasks import TaskService
 from personal_agent.tools.policy import Policy
 from personal_agent.tools.registry import ToolRegistry
 from personal_agent.tools.web_search import SearxngSearchService
+
+
+def _create_user_services(
+    notion: NotionClient, resolver: RelationResolver, databases: NotionUserDatabases
+) -> tuple[TaskService, FinanceService, NotionSearchService]:
+    task_properties = {"title": "Name"} | databases.tasks.properties
+    tasks = TaskService(
+        notion,
+        databases.tasks.data_source_id,
+        task_properties,
+        resolver,
+        databases.projects.data_source_id if databases.projects else None,
+    )
+    finance_properties = {"title": "Item Name", "amount": "Amount", "date": "Date"} | databases.finance.properties
+    finance = FinanceService(
+        notion,
+        databases.finance.data_source_id,
+        finance_properties,
+        resolver,
+        databases.categories.data_source_id if databases.categories else None,
+        databases.accounts.data_source_id if databases.accounts else None,
+    )
+    sources = {
+        "tasks": (databases.tasks.data_source_id, task_properties.get("title", "Name")),
+        "transactions": (databases.finance.data_source_id, finance_properties.get("title", "Item Name")),
+    }
+    for alias, source, title in (
+        ("projects", databases.projects, "Name"),
+        ("categories", databases.categories, "Category Name"),
+        ("accounts", databases.accounts, "Account Name"),
+    ):
+        if source:
+            sources[alias] = (source.data_source_id, source.properties.get("title", title))
+    search = NotionSearchService(notion, sources)
+    return tasks, finance, search
 
 
 async def _create_task(service: TaskService, args: CreateTaskArgs) -> ToolResult:
@@ -48,28 +84,31 @@ async def _query_expenses(service: FinanceService, args: QueryExpensesArgs) -> T
 def build_runtime(settings: Settings) -> AgentRuntime:
     notion = NotionClient(settings.notion_token.get_secret_value())
     resolver = RelationResolver(notion)
-    tasks = TaskService(
-        notion,
-        settings.notion.tasks.data_source_id,
-        settings.notion.tasks.properties,
-        resolver,
-        settings.notion.projects.data_source_id if settings.notion.projects else None,
-    )
-    finance = FinanceService(
-        notion,
-        settings.notion.finance.data_source_id,
-        settings.notion.finance.properties,
-        resolver,
-        settings.notion.categories.data_source_id if settings.notion.categories else None,
-        settings.notion.accounts.data_source_id if settings.notion.accounts else None,
-    )
+
+    user_services: dict[str, tuple[TaskService, FinanceService, NotionSearchService]] = {}
+    default_services: tuple[TaskService, FinanceService, NotionSearchService] | None = None
+
+    if settings.notion.default is not None:
+        default_services = _create_user_services(notion, resolver, settings.notion.default)
+
+    for user_id, user_dbs in settings.notion.users.items():
+        user_services[user_id] = _create_user_services(notion, resolver, user_dbs)
+
+    def resolve_services() -> tuple[TaskService, FinanceService, NotionSearchService]:
+        user_id = current_discord_user_id.get()
+        if user_id and user_id in user_services:
+            return user_services[user_id]
+        if default_services is not None:
+            return default_services
+        raise RuntimeError(f"No Notion databases configured for user {user_id}")
+
     registry = ToolRegistry()
     registry.register(
         RegisteredTool(
             "notion_create_task",
             "Create a task in the user's Tasks database.",
             CreateTaskArgs,
-            lambda args: _create_task(tasks, args),
+            lambda args: _create_task(resolve_services()[0], args),
             ToolRisk.WRITE_SAFE,
         )
     )
@@ -78,28 +117,16 @@ def build_runtime(settings: Settings) -> AgentRuntime:
             "notion_add_transaction",
             "Add an income or expense transaction.",
             AddTransactionArgs,
-            lambda args: _add_transaction(finance, args),
+            lambda args: _add_transaction(resolve_services()[1], args),
             ToolRisk.WRITE_SAFE,
         )
     )
-    sources = {
-        "tasks": (settings.notion.tasks.data_source_id, settings.notion.tasks.properties.get("title", "Name")),
-        "transactions": (settings.notion.finance.data_source_id, settings.notion.finance.properties.get("title", "Item Name")),
-    }
-    for alias, source, title in (
-        ("projects", settings.notion.projects, "Name"),
-        ("categories", settings.notion.categories, "Category Name"),
-        ("accounts", settings.notion.accounts, "Account Name"),
-    ):
-        if source:
-            sources[alias] = (source.data_source_id, source.properties.get("title", title))
-    notion_search = NotionSearchService(notion, sources)
     registry.register(
         RegisteredTool(
             "notion_search",
             "Search configured Notion databases by title.",
             SearchNotionArgs,
-            notion_search.search,
+            lambda args: resolve_services()[2].search(args),
             ToolRisk.READ,
         )
     )
@@ -123,7 +150,7 @@ def build_runtime(settings: Settings) -> AgentRuntime:
             "notion_list_tasks",
             "List tasks from the user's Tasks database.",
             ListTasksArgs,
-            lambda args: _list_tasks(tasks, args),
+            lambda args: _list_tasks(resolve_services()[0], args),
             ToolRisk.READ,
         )
     )
@@ -132,7 +159,7 @@ def build_runtime(settings: Settings) -> AgentRuntime:
             "notion_query_expenses",
             "Query expenses from the user's Finance database.",
             QueryExpensesArgs,
-            lambda args: _query_expenses(finance, args),
+            lambda args: _query_expenses(resolve_services()[1], args),
             ToolRisk.READ,
         )
     )
@@ -141,7 +168,7 @@ def build_runtime(settings: Settings) -> AgentRuntime:
             "notion_add_expense",
             "Add an expense to the user's Finance database.",
             AddExpenseArgs,
-            lambda args: _add_expense(finance, args),
+            lambda args: _add_expense(resolve_services()[1], args),
             ToolRisk.WRITE_SAFE,
         )
     )

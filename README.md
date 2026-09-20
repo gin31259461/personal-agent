@@ -50,8 +50,9 @@ The environment file contains `DISCORD_TOKEN` and `NOTION_TOKEN`. Never commit i
 `personal_agent/agent/default_preferences.md`; set `app.instructions_path` to load an external UTF-8 file at startup.
 
 Normal conversation uses Discord's typing indicator and receives a direct reply. A visible `Thinking` status is only
-created after the model requests a tool; it becomes `Done` or `Failed`. Structured clarification state expires after
-`app.clarification_ttl_seconds` and does not expose general Discord history to the model.
+created after the model requests a tool; it becomes `Done` or `Failed`. Multi-turn conversation context is preserved
+per-channel in SQLite with a 2-hour sliding window. Structured clarification state expires after
+`app.clarification_ttl_seconds` and handles missing relation or argument retries.
 
 Nix-managed deployments enable web search by setting `PERSONAL_AGENT_WEB_SEARCH_URL`; its presence registers the
 tool. Standalone deployments may use the legacy `web_search.enabled` and `web_search.base_url` TOML settings. If both
@@ -72,9 +73,13 @@ title = "Name"
 description = "Description"
 due_date = "Due"
 priority = "Priority"
+
+# Optional per-user Notion overrides
+[notion.users."123456789".tasks]
+data_source_id = "user-specific-tasks-id"
 ```
 
-`owner_user_ids` may contain multiple Discord user IDs. The task tool uses structured output: `description` is a short optional summary and `body` is the optional full Markdown content. If no description is supplied, the Notion Description property remains empty; if no body is supplied, no page body blocks are added.
+`owner_user_ids` may contain multiple Discord user IDs. Each authorized user can optionally be mapped to their own Notion databases under `[notion.users."<id>"]`; if omitted, the global default Notion databases are used. The task tool uses structured output: `description` is a short optional summary and `body` is the optional full Markdown content. If no description is supplied, the Notion Description property remains empty; if no body is supplied, no page body blocks are added.
 
 ## Deployment contract
 

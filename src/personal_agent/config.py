@@ -44,12 +44,41 @@ class NotionDatabaseSettings(StrictModel):
     properties: dict[str, str] = {}
 
 
-class NotionSettings(StrictModel):
+class NotionUserDatabases(StrictModel):
     tasks: NotionDatabaseSettings
     finance: NotionDatabaseSettings
     projects: NotionDatabaseSettings | None = None
     categories: NotionDatabaseSettings | None = None
     accounts: NotionDatabaseSettings | None = None
+
+
+class NotionSettings(StrictModel):
+    tasks: NotionDatabaseSettings | None = None
+    finance: NotionDatabaseSettings | None = None
+    projects: NotionDatabaseSettings | None = None
+    categories: NotionDatabaseSettings | None = None
+    accounts: NotionDatabaseSettings | None = None
+    default: NotionUserDatabases | None = None
+    users: dict[str, NotionUserDatabases] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def populate_default_if_needed(self) -> "NotionSettings":
+        if self.default is None and self.tasks is not None and self.finance is not None:
+            self.default = NotionUserDatabases(
+                tasks=self.tasks,
+                finance=self.finance,
+                projects=self.projects,
+                categories=self.categories,
+                accounts=self.accounts,
+            )
+        if self.default is None and not self.users:
+            raise ValueError("notion configuration must specify either default databases or per-user databases")
+        return self
+
+    def get_for_user(self, user_id: str | int | None) -> NotionUserDatabases | None:
+        if user_id is not None and str(user_id) in self.users:
+            return self.users[str(user_id)]
+        return self.default
 
 
 class WebSearchSettings(StrictModel):

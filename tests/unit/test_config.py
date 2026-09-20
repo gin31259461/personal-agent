@@ -74,3 +74,44 @@ def test_managed_and_legacy_web_search_urls_must_match(tmp_path: Path, monkeypat
     env = write(tmp_path / ".env", "DISCORD_TOKEN=discord\nNOTION_TOKEN=notion\n")
     with pytest.raises(ValueError, match="URLs conflict"):
         Settings.from_toml(config, env)
+
+
+def test_multi_user_notion_config(tmp_path: Path) -> None:
+    multi_user_config = """
+[app]
+timezone = "Asia/Taipei"
+
+[discord]
+guild_id = 3
+channel_id = 2
+owner_user_ids = [100, 200]
+
+[notion.default.tasks]
+data_source_id = "default-tasks"
+
+[notion.default.finance]
+data_source_id = "default-finance"
+
+[notion.users."100".tasks]
+data_source_id = "user100-tasks"
+
+[notion.users."100".finance]
+data_source_id = "user100-finance"
+"""
+    path = write(tmp_path / "config.toml", multi_user_config)
+    config = ApplicationConfig.from_toml(path)
+    assert config.notion.default is not None
+    assert config.notion.default.tasks.data_source_id == "default-tasks"
+    assert "100" in config.notion.users
+    assert config.notion.users["100"].tasks.data_source_id == "user100-tasks"
+
+    user100_dbs = config.notion.get_for_user(100)
+    assert user100_dbs is not None
+    assert user100_dbs.tasks.data_source_id == "user100-tasks"
+    assert user100_dbs.finance.data_source_id == "user100-finance"
+
+    # User 200 has no specific override, should fallback to default
+    user200_dbs = config.notion.get_for_user(200)
+    assert user200_dbs is not None
+    assert user200_dbs.tasks.data_source_id == "default-tasks"
+    assert user200_dbs.finance.data_source_id == "default-finance"

@@ -62,6 +62,13 @@ data_source_id = "replace-with-accounts-data-source-id"
 [notion.accounts.properties]
 title = "Account Name"
 
+# Optional per-user Notion overrides. If defined, requests from this Discord user ID
+# will dynamically route to these databases instead of the default databases above.
+# [notion.users."836446179431677992".tasks]
+# data_source_id = "user1-tasks-data-source-id"
+# [notion.users."836446179431677992".finance]
+# data_source_id = "user1-finance-data-source-id"
+
 [web_search]
 # Legacy standalone switch. Nix deployments inject PERSONAL_AGENT_WEB_SEARCH_URL instead.
 enabled = false
