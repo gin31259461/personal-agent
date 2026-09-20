@@ -4,10 +4,12 @@ from typing import Any, cast
 from discord.ext import commands
 
 from personal_agent.agent.tool_loop import AgentResponse
+from personal_agent.context import current_discord_user_id
 from personal_agent.llm.models import Message
 from personal_agent.storage.db import Database
 from personal_agent.storage.repositories.contexts import PendingContextRepository
 from personal_agent.storage.repositories.events import ProcessedEventRepository
+from personal_agent.storage.repositories.messages import MessageRepository
 
 from .handler import MessageAuthorizer, handle_message
 
@@ -37,10 +39,12 @@ class PersonalAgentBot(commands.Bot):
             print("Discord message claimed; starting response", flush=True)
             try:
                 contexts = PendingContextRepository(session)
+                messages_repo = MessageRepository(session)
                 guild_key, channel_key, user_key = str(guild_id), str(channel_id), str(author_id)
+                current_discord_user_id.set(user_key)
                 pending = await contexts.get(guild_key, channel_key, user_key)
-                history = None
-                if pending:
+                history = await messages_repo.get_recent_messages(channel_key)
+                if pending and not history:
                     dialogue = json.loads(pending.arguments_json)
                     history = [
                         Message(role="user", content=dialogue["user"]),
@@ -51,6 +55,18 @@ class PersonalAgentBot(commands.Bot):
                     return cast(AgentResponse, await self.runtime.respond(content, history=history, **kwargs))
 
                 response = await handle_message(message, self.authorizer, respond)
+                if response:
+                    user_text = message.content.strip()
+                    assistant_text = response.content.strip()
+                    if user_text:
+                        await messages_repo.add_messages(
+                            channel_key,
+                            [
+                                Message(role="user", content=user_text),
+                                Message(role="assistant", content=assistant_text),
+                            ],
+                        )
+
                 if response and response.clarification_required:
                     await contexts.save_dialogue(
                         guild_key,

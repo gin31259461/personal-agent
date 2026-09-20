@@ -164,6 +164,53 @@ async def test_failed_response_updates_pending_message():
     assert sent[0].content.startswith("❌ Failed")
 
 
+@pytest.mark.asyncio
+async def test_bot_on_message_preserves_and_injects_conversation_history():
+    from personal_agent.agent.tool_loop import AgentResponse
+    from personal_agent.discord.bot import PersonalAgentBot
+    from personal_agent.storage.db import Database
+
+    database = Database("sqlite+aiosqlite:///:memory:")
+    await database.create_schema()
+
+    received_histories = []
+
+    class MockRuntime:
+        clarification_ttl_seconds = 600
+
+        async def respond(self, content: str, history=None, **kwargs):
+            received_histories.append(history)
+            return AgentResponse(f"Echo: {content}")
+
+    authorizer = MessageAuthorizer(guild_id=3, channel_id=2, owner_user_ids=1)
+    bot = PersonalAgentBot(token="fake", authorizer=authorizer, runtime=MockRuntime(), database=database)
+
+    async def send_msg(content):
+        return SimpleNamespace(content=content, edit=lambda **kw: None)
+
+    msg1 = message(user=1, channel=2, guild=3, content="Turn 1")
+    msg1.id = 101
+    msg1.channel.send = send_msg
+    await bot.on_message(msg1)
+
+    assert len(received_histories) == 1
+    assert received_histories[0] == []  # First turn has no history
+
+    msg2 = message(user=1, channel=2, guild=3, content="Turn 2")
+    msg2.id = 102
+    msg2.channel.send = send_msg
+    await bot.on_message(msg2)
+
+    assert len(received_histories) == 2
+    assert len(received_histories[1]) == 2
+    assert received_histories[1][0].role == "user"
+    assert received_histories[1][0].content == "Turn 1"
+    assert received_histories[1][1].role == "assistant"
+    assert received_histories[1][1].content == "Echo: Turn 1"
+
+    await database.close()
+
+
 async def _reply(*args, **kwargs):
     from personal_agent.agent.tool_loop import AgentResponse
 
