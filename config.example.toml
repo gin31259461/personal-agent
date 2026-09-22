@@ -21,46 +21,8 @@ timeout_seconds = 60
 [notion.tasks]
 data_source_id = "replace-with-tasks-data-source-id"
 
-[notion.tasks.properties]
-title = "Name"
-status = "Status"
-due = "Due"
-priority = "Priority"
-description = "Description"
-project = "Project"
-parent_task = "Parent Task"
-sub_tasks = "Sub-Tasks"
-assignee = "Assignee"
-smart_list = "Smart List"
-recur_interval = "Recur Interval"
-recur_unit = "Recur Unit"
-recur_days = "Days (Only if Set to 1 Day(s))"
-
 [notion.finance]
 data_source_id = "replace-with-finance-data-source-id"
-
-[notion.finance.properties]
-title = "Item Name"
-amount = "Amount"
-date = "Date"
-type = "Type"
-category = "Category"
-account = "Account"
-
-[notion.projects]
-data_source_id = "replace-with-projects-data-source-id"
-[notion.projects.properties]
-title = "Name"
-
-[notion.categories]
-data_source_id = "replace-with-categories-data-source-id"
-[notion.categories.properties]
-title = "Category Name"
-
-[notion.accounts]
-data_source_id = "replace-with-accounts-data-source-id"
-[notion.accounts.properties]
-title = "Account Name"
 
 # Optional per-user Notion overrides. If defined, requests from this Discord user ID
 # will dynamically route to these databases instead of the default databases above.

@@ -108,5 +108,18 @@ class NotionClient:
             )
         except httpx.TimeoutException as exc:
             raise NotionError("NOTION_TIMEOUT", "Notion API request timed out") from exc
+
+    async def archive_page(self, page_id: str) -> dict[str, Any]:
+        try:
+            response = await self._client.patch(f"/pages/{page_id}", json={"archived": True})
+            if response.status_code in {429, 500, 502, 503, 504}:
+                raise _RetryableNotionResponse(response.status_code)
+            if response.status_code >= 400:
+                raise NotionError(f"NOTION_{response.status_code}", "Notion rejected page archive")
+            return cast(dict[str, Any], response.json())
+        except httpx.TimeoutException as exc:
+            raise NotionError("NOTION_TIMEOUT", "Notion API request timed out") from exc
+        except _RetryableNotionResponse as exc:
+            raise NotionError(f"NOTION_{exc.status_code}", "Notion API temporarily unavailable") from exc
         except httpx.TransportError as exc:
             raise NotionError("NOTION_NETWORK", "Notion API network error") from exc

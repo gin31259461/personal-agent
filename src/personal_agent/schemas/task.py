@@ -10,6 +10,25 @@ class RelationRef(StrictModel):
     id: str | None = Field(default=None, min_length=1)
     name: str | None = Field(default=None, min_length=1, max_length=500)
 
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_reference(cls, value: object) -> object:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                raise ValueError("relation reference must not be empty")
+            return {"name": cleaned}
+        if isinstance(value, dict):
+            cleaned_dict = dict(value)
+            if "name" in cleaned_dict and isinstance(cleaned_dict["name"], str):
+                cleaned_name = cleaned_dict["name"].strip()
+                cleaned_dict["name"] = cleaned_name or None
+            if "id" in cleaned_dict and isinstance(cleaned_dict["id"], str):
+                cleaned_id = cleaned_dict["id"].strip()
+                cleaned_dict["id"] = cleaned_id or None
+            return cleaned_dict
+        return value
+
     @classmethod
     def from_name(cls, name: str) -> "RelationRef":
         return cls(name=name)

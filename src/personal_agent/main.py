@@ -19,6 +19,7 @@ from personal_agent.tools.executor import ToolExecutor
 from personal_agent.tools.notion.client import NotionClient
 from personal_agent.tools.notion.finance import FinanceService
 from personal_agent.tools.notion.relations import RelationResolver
+from personal_agent.tools.notion.schema import NotionSchemaCache
 from personal_agent.tools.notion.search import NotionSearchService
 from personal_agent.tools.notion.tasks import TaskService
 from personal_agent.tools.policy import Policy
@@ -27,17 +28,21 @@ from personal_agent.tools.web_search import SearxngSearchService
 
 
 def _create_user_services(
-    notion: NotionClient, resolver: RelationResolver, databases: NotionUserDatabases
+    notion: NotionClient,
+    resolver: RelationResolver,
+    databases: NotionUserDatabases,
+    schema_cache: NotionSchemaCache | None = None,
 ) -> tuple[TaskService, FinanceService, NotionSearchService]:
-    task_properties = {"title": "Name"} | databases.tasks.properties
+    task_properties = dict(databases.tasks.properties)
     tasks = TaskService(
         notion,
         databases.tasks.data_source_id,
         task_properties,
         resolver,
         databases.projects.data_source_id if databases.projects else None,
+        schema_cache=schema_cache,
     )
-    finance_properties = {"title": "Item Name", "amount": "Amount", "date": "Date"} | databases.finance.properties
+    finance_properties = dict(databases.finance.properties)
     finance = FinanceService(
         notion,
         databases.finance.data_source_id,
@@ -45,19 +50,20 @@ def _create_user_services(
         resolver,
         databases.categories.data_source_id if databases.categories else None,
         databases.accounts.data_source_id if databases.accounts else None,
+        schema_cache=schema_cache,
     )
-    sources = {
-        "tasks": (databases.tasks.data_source_id, task_properties.get("title", "Name")),
-        "transactions": (databases.finance.data_source_id, finance_properties.get("title", "Item Name")),
+    sources: dict[str, tuple[str, str | None]] = {
+        "tasks": (databases.tasks.data_source_id, task_properties.get("title")),
+        "transactions": (databases.finance.data_source_id, finance_properties.get("title")),
     }
-    for alias, source, title in (
-        ("projects", databases.projects, "Name"),
-        ("categories", databases.categories, "Category Name"),
-        ("accounts", databases.accounts, "Account Name"),
+    for alias, source in (
+        ("projects", databases.projects),
+        ("categories", databases.categories),
+        ("accounts", databases.accounts),
     ):
         if source:
-            sources[alias] = (source.data_source_id, source.properties.get("title", title))
-    search = NotionSearchService(notion, sources)
+            sources[alias] = (source.data_source_id, source.properties.get("title"))
+    search = NotionSearchService(notion, sources, schema_cache=schema_cache)
     return tasks, finance, search
 
 
@@ -83,16 +89,17 @@ async def _query_expenses(service: FinanceService, args: QueryExpensesArgs) -> T
 
 def build_runtime(settings: Settings) -> AgentRuntime:
     notion = NotionClient(settings.notion_token.get_secret_value())
-    resolver = RelationResolver(notion)
+    schema_cache = NotionSchemaCache(notion)
+    resolver = RelationResolver(notion, schema_cache=schema_cache)
 
     user_services: dict[str, tuple[TaskService, FinanceService, NotionSearchService]] = {}
     default_services: tuple[TaskService, FinanceService, NotionSearchService] | None = None
 
     if settings.notion.default is not None:
-        default_services = _create_user_services(notion, resolver, settings.notion.default)
+        default_services = _create_user_services(notion, resolver, settings.notion.default, schema_cache)
 
     for user_id, user_dbs in settings.notion.users.items():
-        user_services[user_id] = _create_user_services(notion, resolver, user_dbs)
+        user_services[user_id] = _create_user_services(notion, resolver, user_dbs, schema_cache)
 
     def resolve_services() -> tuple[TaskService, FinanceService, NotionSearchService]:
         user_id = current_discord_user_id.get()

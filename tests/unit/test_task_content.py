@@ -95,3 +95,40 @@ async def test_task_project_is_written_as_relation():
     result = await service.create(CreateTaskArgs(title="部署", project={"name": "Personal Agent"}))
     assert result.success is True
     assert notion.properties["Project"] == {"relation": [{"id": "related-id"}]}
+
+
+@pytest.mark.asyncio
+async def test_task_auto_detects_schema_and_accepts_string_project():
+    from personal_agent.tools.notion.schema import NotionSchemaCache
+
+    class SchemaNotion(FakeNotion):
+        async def retrieve_data_source(self, data_source_id):
+            if data_source_id == "tasks":
+                return {
+                    "properties": {
+                        "任務": {"type": "title"},
+                        "狀態": {"type": "status"},
+                        "專案": {
+                            "type": "relation",
+                            "relation": {"data_source_id": "projects-auto"},
+                        },
+                    }
+                }
+            if data_source_id == "projects-auto":
+                return {"properties": {"專案名稱": {"type": "title"}}}
+            return {"properties": {}}
+
+    notion = SchemaNotion()
+    cache = NotionSchemaCache(notion)
+    service = TaskService(
+        notion,
+        "tasks",
+        properties={},
+        resolver=FakeResolver(),
+        schema_cache=cache,
+    )
+    result = await service.create(CreateTaskArgs(title="測試任務", status="To Do", project="AI Agent"))
+    assert result.success is True
+    assert notion.properties["任務"] == {"title": [{"text": {"content": "測試任務"}}]}
+    assert notion.properties["狀態"] == {"status": {"name": "To Do"}}
+    assert notion.properties["專案"] == {"relation": [{"id": "related-id"}]}

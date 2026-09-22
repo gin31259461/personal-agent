@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from personal_agent.schemas.common import ToolResult
 from personal_agent.schemas.query import ListTasksArgs
 from personal_agent.schemas.task import CreateTaskArgs
@@ -18,6 +20,9 @@ from .mapping import (
 )
 from .relations import RelationResolver
 
+if TYPE_CHECKING:
+    from .schema import NotionSchemaCache
+
 MAX_DESCRIPTION_LENGTH = 2000
 
 
@@ -35,35 +40,52 @@ class TaskService:
         self,
         client: NotionClient,
         data_source_id: str,
-        properties: dict[str, str],
+        properties: dict[str, str] | None = None,
         resolver: RelationResolver | None = None,
         project_data_source_id: str | None = None,
+        schema_cache: "NotionSchemaCache | None" = None,
     ) -> None:
-        self.client, self.data_source_id, self.properties = client, data_source_id, properties
+        self.client, self.data_source_id = client, data_source_id
+        self.properties = dict(properties or {})
         self.resolver = resolver
         self.project_data_source_id = project_data_source_id
+        self.schema_cache = schema_cache
+
+    async def _get_properties(self) -> dict[str, str]:
+        if self.schema_cache:
+            return await self.schema_cache.resolve_task_properties(self.data_source_id, self.properties)
+        fallback = {"title": "Name"}
+        fallback.update(self.properties)
+        return fallback
 
     async def create(self, args: CreateTaskArgs, external_id: str | None = None) -> ToolResult:
-        p = self.properties
-        properties = merge(title_property(p["title"], args.title))
-        description = _description_text(args.description, None)
-        if args.due_at:
-            properties.update(date_range_property(p.get("due", p.get("due_date", "Due")), args.due_at, args.due_end_at))
-        if args.status and p.get("status"):
-            properties.update(status_property(p["status"], args.status))
-        if args.priority:
-            properties.update(status_property(p["priority"], args.priority.capitalize()))
-        description_property = p.get("description") or p.get("note")
-        if description and description_property:
-            properties.update(rich_text_property(description_property, description))
-        if external_id and p.get("external_id"):
-            properties.update(rich_text_property(p["external_id"], external_id))
         try:
-            if args.project and self.resolver and self.project_data_source_id and p.get("project"):
-                project = await self.resolver.resolve(self.project_data_source_id, "Name", args.project)
-                properties.update(relation_property(p["project"], [project.id]))
+            p = await self._get_properties()
+            title_prop = p.get("title", "Name")
+            properties = merge(title_property(title_prop, args.title))
+            description = _description_text(args.description, None)
+            if args.due_at:
+                properties.update(date_range_property(p.get("due", "Due"), args.due_at, args.due_end_at))
+            if args.status and p.get("status"):
+                properties.update(status_property(p["status"], args.status))
+            if args.priority:
+                properties.update(status_property(p["priority"], args.priority.capitalize()))
+            description_property = p.get("description") or p.get("note")
+            if description and description_property:
+                properties.update(rich_text_property(description_property, description))
+            if external_id and p.get("external_id"):
+                properties.update(rich_text_property(p["external_id"], external_id))
+
+            if args.project and self.resolver and p.get("project"):
+                proj_target_id = self.project_data_source_id
+                if not proj_target_id and self.schema_cache:
+                    proj_target_id = await self.schema_cache.get_relation_target_data_source_id(self.data_source_id, p["project"])
+                if proj_target_id:
+                    proj_title = await self.schema_cache.get_title_property_name(proj_target_id) if self.schema_cache else "Name"
+                    project = await self.resolver.resolve(proj_target_id, proj_title, args.project)
+                    properties.update(relation_property(p["project"], [project.id]))
             if args.parent_task and self.resolver and p.get("parent_task"):
-                parent = await self.resolver.resolve(self.data_source_id, p["title"], args.parent_task)
+                parent = await self.resolver.resolve(self.data_source_id, title_prop, args.parent_task)
                 properties.update(relation_property(p["parent_task"], [parent.id]))
             if args.assignee_user_ids and p.get("assignee"):
                 properties.update(people_property(p["assignee"], args.assignee_user_ids))
@@ -94,10 +116,11 @@ class TaskService:
             return ToolResult.fail(exc.code, str(exc))
 
     async def list(self, args: ListTasksArgs) -> ToolResult:
-        body = {}
-        if args.status:
-            body["filter"] = {"property": self.properties["status"], "status": {"equals": args.status}}
         try:
+            p = await self._get_properties()
+            body = {}
+            if args.status and p.get("status"):
+                body["filter"] = {"property": p["status"], "status": {"equals": args.status}}
             pages = await self.client.query_data_source(self.data_source_id, body)
             tasks = [{"id": page.get("id", ""), "url": page.get("url", "")} for page in pages]
             return ToolResult.ok({"tasks": tasks, "count": len(tasks)})

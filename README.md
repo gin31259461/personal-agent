@@ -68,11 +68,11 @@ guild_id = 123456789
 channel_id = 123456789
 owner_user_ids = [123456789]
 
-[notion.tasks.properties]
-title = "Name"
-description = "Description"
-due_date = "Due"
-priority = "Priority"
+[notion.tasks]
+data_source_id = "default-tasks-id"
+
+[notion.finance]
+data_source_id = "default-finance-id"
 
 # Optional per-user Notion overrides
 [notion.users."123456789".tasks]
