@@ -6,7 +6,7 @@ Personal Discord assistant backed by an OpenAI-compatible llama-swap endpoint an
 
 - Create Notion tasks with title, optional description, due date, priority, and Markdown page body.
 - Add expenses, list tasks, and query expenses through registered Notion tools.
-- Show `Pending`, `Done`, and `Failed` status in Discord while a request is processed.
+- Show animated thinking status in Discord while a tool request is processed.
 - Restrict requests to configured Discord users in one guild and channel.
 - Convert supported Markdown headings, lists, checkboxes, quotes, code blocks, emphasis, inline code, and links into Notion blocks.
 - Resolve Task projects and transaction categories/accounts through validated Notion relations.
@@ -49,8 +49,8 @@ uv run --env-file ./.env personal-agent run --config ./config.toml
 The environment file contains `DISCORD_TOKEN` and `NOTION_TOKEN`. Never commit it. Model preferences default to
 `personal_agent/agent/default_preferences.md`; set `app.instructions_path` to load an external UTF-8 file at startup.
 
-Normal conversation uses Discord's typing indicator and receives a direct reply. A visible `Thinking` status is only
-created after the model requests a tool; it becomes `Done` or `Failed`. Multi-turn conversation context is preserved
+Normal conversation uses Discord's typing indicator and receives a direct reply. A visible animated thinking status is only
+created after the model requests a tool; it is updated with the final reply or `Failed` status. Multi-turn conversation context is preserved
 per-channel in SQLite with a 2-hour sliding window. Structured clarification state expires after
 `app.clarification_ttl_seconds` and handles missing relation or argument retries.
 

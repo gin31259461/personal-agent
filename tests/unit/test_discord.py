@@ -91,15 +91,18 @@ async def test_pending_message_is_updated_with_reply():
 
 
 @pytest.mark.asyncio
-async def test_tool_task_changes_thinking_to_done():
+async def test_tool_task_updates_thinking_message():
     sent = []
     msg = message()
 
-    async def send(value):
-        status = SimpleNamespace(content=value)
+    async def send(value=None, *, file=None, **kwargs):
+        status = SimpleNamespace(content=value, file=file, attachments=[file] if file else [])
 
-        async def edit(*, content):
-            status.content = content
+        async def edit(*, content=None, attachments=None, **kwargs):
+            if content is not None:
+                status.content = content
+            if attachments is not None:
+                status.attachments = attachments
 
         status.edit = edit
         sent.append(status)
@@ -114,7 +117,10 @@ async def test_tool_task_changes_thinking_to_done():
     msg.channel.send = send
     await handle_message(msg, MessageAuthorizer(3, 2, 1), respond)
     assert len(sent) == 1
-    assert sent[0].content == "✅ Done\n\n建立完成"
+    assert sent[0].content == "建立完成"
+    assert sent[0].attachments == []
+    assert sent[0].file is not None
+    assert sent[0].file.filename == "clawd-thinking.gif"
 
 
 @pytest.mark.asyncio
@@ -122,11 +128,14 @@ async def test_failed_tool_changes_thinking_to_failed():
     sent = []
     msg = message()
 
-    async def send(value):
-        status = SimpleNamespace(content=value)
+    async def send(value=None, *, file=None, **kwargs):
+        status = SimpleNamespace(content=value, file=file, attachments=[file] if file else [])
 
-        async def edit(*, content):
-            status.content = content
+        async def edit(*, content=None, attachments=None, **kwargs):
+            if content is not None:
+                status.content = content
+            if attachments is not None:
+                status.attachments = attachments
 
         status.edit = edit
         sent.append(status)
@@ -141,6 +150,8 @@ async def test_failed_tool_changes_thinking_to_failed():
     msg.channel.send = send
     await handle_message(msg, MessageAuthorizer(3, 2, 1), respond)
     assert sent[0].content == "❌ Failed\n\nNotion 拒絕請求"
+    assert sent[0].attachments == []
+    assert sent[0].file is not None
 
 
 @pytest.mark.asyncio
