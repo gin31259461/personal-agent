@@ -11,7 +11,13 @@ from personal_agent.discord.handler import MessageAuthorizer
 from personal_agent.llm.client import LLMClient
 from personal_agent.schemas.common import ToolResult
 from personal_agent.schemas.expense import AddExpenseArgs, AddTransactionArgs
-from personal_agent.schemas.query import ListTasksArgs, QueryExpensesArgs, SearchNotionArgs, WebSearchArgs
+from personal_agent.schemas.query import (
+    GetDatabaseInfoArgs,
+    ListTasksArgs,
+    QueryExpensesArgs,
+    SearchNotionArgs,
+    WebSearchArgs,
+)
 from personal_agent.schemas.task import CreateTaskArgs
 from personal_agent.storage.db import Database
 from personal_agent.tools.base import RegisteredTool, ToolRisk
@@ -85,6 +91,56 @@ async def _list_tasks(service: TaskService, args: ListTasksArgs) -> ToolResult:
 
 async def _query_expenses(service: FinanceService, args: QueryExpensesArgs) -> ToolResult:
     return await service.query(args)
+
+
+async def _get_database_info(
+    settings: Settings,
+    schema_cache: NotionSchemaCache,
+    args: GetDatabaseInfoArgs,
+) -> ToolResult:
+    try:
+        user_id = current_discord_user_id.get()
+        user_dbs = settings.notion.get_for_user(user_id) or settings.notion.default
+        if not user_dbs:
+            return ToolResult.fail("NO_DATABASES", "No Notion databases configured")
+
+        db_alias = args.database.lower().strip()
+        ds_id: str | None = None
+        if db_alias in {"finance", "transactions", "expense", "expenses"}:
+            ds_id = user_dbs.finance.data_source_id
+        elif db_alias in {"tasks", "task"}:
+            ds_id = user_dbs.tasks.data_source_id
+        elif db_alias in {"categories", "category"}:
+            if user_dbs.categories:
+                ds_id = user_dbs.categories.data_source_id
+            else:
+                ds_id = await schema_cache.get_relation_target_data_source_id(user_dbs.finance.data_source_id, "Category")
+        elif db_alias in {"accounts", "account"}:
+            if user_dbs.accounts:
+                ds_id = user_dbs.accounts.data_source_id
+            else:
+                ds_id = await schema_cache.get_relation_target_data_source_id(user_dbs.finance.data_source_id, "Account")
+        elif db_alias in {"projects", "project"}:
+            if user_dbs.projects:
+                ds_id = user_dbs.projects.data_source_id
+            else:
+                ds_id = await schema_cache.get_relation_target_data_source_id(user_dbs.tasks.data_source_id, "Project")
+
+        if not ds_id:
+            return ToolResult.fail("DATABASE_NOT_FOUND", f"Could not find or resolve database '{args.database}'")
+
+        if args.property:
+            result = await schema_cache.get_property_options(ds_id, args.property)
+            return ToolResult.ok(result)
+
+        if db_alias in {"categories", "category", "accounts", "account", "projects", "project"}:
+            options = await schema_cache.get_relation_options(ds_id)
+            return ToolResult.ok({"database": args.database, "options": [opt["name"] for opt in options]})
+
+        summary = await schema_cache.get_database_summary(ds_id)
+        return ToolResult.ok(summary)
+    except Exception as exc:
+        return ToolResult.fail("DATABASE_INFO_ERROR", str(exc))
 
 
 def build_runtime(settings: Settings) -> AgentRuntime:
@@ -177,6 +233,15 @@ def build_runtime(settings: Settings) -> AgentRuntime:
             AddExpenseArgs,
             lambda args: _add_expense(resolve_services()[1], args),
             ToolRisk.WRITE_SAFE,
+        )
+    )
+    registry.register(
+        RegisteredTool(
+            "notion_get_database_info",
+            "Inspect a Notion database schema or list available options for a property (categories, accounts, statuses).",
+            GetDatabaseInfoArgs,
+            lambda args: _get_database_info(settings, schema_cache, args),
+            ToolRisk.READ,
         )
     )
     llm = LLMClient(

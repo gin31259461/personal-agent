@@ -1,11 +1,19 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from personal_agent.schemas.common import ToolResult
 from personal_agent.schemas.expense import AddExpenseArgs, AddTransactionArgs
 from personal_agent.schemas.query import QueryExpensesArgs
 
 from .client import NotionClient, NotionError
-from .mapping import date_property, merge, number_property, relation_property, select_property, title_property
+from .mapping import (
+    date_property,
+    extract_page_properties,
+    merge,
+    number_property,
+    relation_property,
+    select_property,
+    title_property,
+)
 from .relations import RelationResolver
 
 if TYPE_CHECKING:
@@ -98,9 +106,39 @@ class FinanceService:
                 filters.append({"property": date_prop, "date": {"on_or_after": args.start_date.isoformat()}})
             if args.end_date:
                 filters.append({"property": date_prop, "date": {"on_or_before": args.end_date.isoformat()}})
-            body = {"filter": {"and": filters}} if len(filters) > 1 else ({"filter": filters[0]} if filters else {})
+            if args.type and p.get("type"):
+                filters.append({"property": p["type"], "select": {"equals": args.type}})
+
+            body: dict[str, Any] = {"page_size": args.limit}
+            if len(filters) > 1:
+                body["filter"] = {"and": filters}
+            elif filters:
+                body["filter"] = filters[0]
+
             pages = await self.client.query_data_source(self.data_source_id, body)
-            expenses = [{"id": page.get("id", ""), "url": page.get("url", "")} for page in pages]
+
+            cat_prop_name = p.get("category")
+            acc_prop_name = p.get("account")
+            cat_target_id = self.category_data_source_id
+            if not cat_target_id and self.schema_cache and cat_prop_name:
+                cat_target_id = await self.schema_cache.get_relation_target_data_source_id(self.data_source_id, cat_prop_name)
+            acc_target_id = self.account_data_source_id
+            if not acc_target_id and self.schema_cache and acc_prop_name:
+                acc_target_id = await self.schema_cache.get_relation_target_data_source_id(self.data_source_id, acc_prop_name)
+
+            expenses = []
+            for page in pages:
+                item = extract_page_properties(page)
+                if cat_target_id and self.schema_cache and cat_prop_name in item:
+                    cat_val = item[cat_prop_name]
+                    if isinstance(cat_val, list):
+                        item[cat_prop_name] = await self.schema_cache.resolve_relation_names(cat_target_id, cat_val)
+                if acc_target_id and self.schema_cache and acc_prop_name in item:
+                    acc_val = item[acc_prop_name]
+                    if isinstance(acc_val, list):
+                        item[acc_prop_name] = await self.schema_cache.resolve_relation_names(acc_target_id, acc_val)
+                expenses.append(item)
+
             return ToolResult.ok({"expenses": expenses, "count": len(expenses)})
         except NotionError as exc:
             return ToolResult.fail(exc.code, str(exc))

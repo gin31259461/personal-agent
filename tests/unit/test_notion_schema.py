@@ -149,3 +149,68 @@ async def test_resolve_task_properties_detection():
     assert props["parent_task"] == "母任務"
     assert props["assignee"] == "負責人"
     assert await cache.get_relation_target_data_source_id("tasks-ds", "專案") == "proj-ds"
+
+
+@pytest.mark.asyncio
+async def test_get_property_options_and_summary():
+    from personal_agent.tools.notion.mapping import extract_page_properties
+
+    class FullFakeClient(FakeClient):
+        async def query_data_source(self, data_source_id, body=None):
+            if data_source_id == "cat-ds":
+                return [
+                    {"id": "c1", "properties": {"名稱": {"type": "title", "title": [{"plain_text": "餐飲"}]}}},
+                    {"id": "c2", "properties": {"名稱": {"type": "title", "title": [{"plain_text": "娛樂"}]}}},
+                ]
+            return []
+
+    schemas = {
+        "finance-ds": {
+            "properties": {
+                "名稱": {"type": "title"},
+                "金額": {"type": "number"},
+                "收支": {"type": "select", "select": {"options": [{"name": "Income"}, {"name": "Expense"}]}},
+                "類別": {"type": "relation", "relation": {"data_source_id": "cat-ds"}},
+            }
+        },
+        "cat-ds": {
+            "properties": {
+                "名稱": {"type": "title"},
+            }
+        },
+    }
+    client = FullFakeClient(schemas)
+    cache = NotionSchemaCache(client)
+
+    # Test select options
+    type_opts = await cache.get_property_options("finance-ds", "收支")
+    assert type_opts["type"] == "select"
+    assert type_opts["options"] == ["Income", "Expense"]
+
+    # Test relation options
+    rel_opts = await cache.get_property_options("finance-ds", "類別")
+    assert rel_opts["type"] == "relation"
+    assert rel_opts["options"] == ["餐飲", "娛樂"]
+
+    # Test summary
+    summary = await cache.get_database_summary("finance-ds")
+    assert "properties" in summary
+    assert summary["properties"]["收支"]["options"] == ["Income", "Expense"]
+
+    # Test extract_page_properties
+    sample_page = {
+        "id": "page-1",
+        "url": "https://notion.so/page-1",
+        "properties": {
+            "名稱": {"type": "title", "title": [{"plain_text": "午餐"}]},
+            "金額": {"type": "number", "number": 120},
+            "收支": {"type": "select", "select": {"name": "Expense"}},
+            "類別": {"type": "relation", "relation": [{"id": "c1"}]},
+        },
+    }
+    extracted = extract_page_properties(sample_page)
+    assert extracted["id"] == "page-1"
+    assert extracted["名稱"] == "午餐"
+    assert extracted["金額"] == 120
+    assert extracted["收支"] == "Expense"
+    assert extracted["類別"] == ["c1"]

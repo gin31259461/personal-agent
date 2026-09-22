@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from personal_agent.schemas.common import ToolResult
 from personal_agent.schemas.query import ListTasksArgs
@@ -7,6 +7,7 @@ from personal_agent.schemas.task import CreateTaskArgs
 from .client import NotionClient, NotionError
 from .mapping import (
     date_range_property,
+    extract_page_properties,
     merge,
     multi_select_property,
     number_property,
@@ -118,11 +119,25 @@ class TaskService:
     async def list(self, args: ListTasksArgs) -> ToolResult:
         try:
             p = await self._get_properties()
-            body = {}
+            body: dict[str, Any] = {"page_size": args.limit}
             if args.status and p.get("status"):
                 body["filter"] = {"property": p["status"], "status": {"equals": args.status}}
             pages = await self.client.query_data_source(self.data_source_id, body)
-            tasks = [{"id": page.get("id", ""), "url": page.get("url", "")} for page in pages]
+
+            proj_prop_name = p.get("project")
+            proj_target_id = self.project_data_source_id
+            if not proj_target_id and self.schema_cache and proj_prop_name:
+                proj_target_id = await self.schema_cache.get_relation_target_data_source_id(self.data_source_id, proj_prop_name)
+
+            tasks = []
+            for page in pages:
+                item = extract_page_properties(page)
+                if proj_target_id and self.schema_cache and proj_prop_name in item:
+                    proj_val = item[proj_prop_name]
+                    if isinstance(proj_val, list):
+                        item[proj_prop_name] = await self.schema_cache.resolve_relation_names(proj_target_id, proj_val)
+                tasks.append(item)
+
             return ToolResult.ok({"tasks": tasks, "count": len(tasks)})
         except NotionError as exc:
             return ToolResult.fail(exc.code, str(exc))

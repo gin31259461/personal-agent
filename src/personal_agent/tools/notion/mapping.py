@@ -2,6 +2,7 @@ import re
 from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 
 def title_property(name: str, value: str) -> dict[str, object]:
@@ -51,6 +52,66 @@ def merge(*properties: dict[str, object]) -> dict[str, object]:
     result: dict[str, object] = {}
     for property_group in properties:
         result.update(property_group)
+    return result
+
+
+def extract_property_value(prop: dict[str, Any]) -> Any:
+    prop_type = prop.get("type")
+    if prop_type in {"title", "rich_text"}:
+        items = prop.get(prop_type, [])
+        return "".join(item.get("plain_text", "") for item in items).strip()
+    if prop_type == "number":
+        return prop.get("number")
+    if prop_type == "select":
+        sel = prop.get("select")
+        return sel.get("name") if sel else None
+    if prop_type == "status":
+        st = prop.get("status")
+        return st.get("name") if st else None
+    if prop_type == "date":
+        d = prop.get("date")
+        if not d:
+            return None
+        start = d.get("start")
+        end = d.get("end")
+        if end:
+            return f"{start} to {end}"
+        return start
+    if prop_type == "multi_select":
+        return [item.get("name") for item in prop.get("multi_select", []) if item.get("name")]
+    if prop_type == "relation":
+        return [item.get("id") for item in prop.get("relation", []) if item.get("id")]
+    if prop_type == "formula":
+        formula = prop.get("formula", {})
+        f_type = formula.get("type")
+        return formula.get(f_type) if f_type else None
+    if prop_type == "checkbox":
+        return prop.get("checkbox")
+    if prop_type == "people":
+        return [p.get("name") or p.get("id") for p in prop.get("people", [])]
+    if prop_type in {"url", "email", "phone_number"}:
+        return prop.get(prop_type)
+    if prop_type == "rollup":
+        rollup = prop.get("rollup", {})
+        r_type = rollup.get("type")
+        if r_type in {"number", "date"}:
+            return rollup.get(r_type)
+        if r_type == "array":
+            return [extract_property_value(item) for item in rollup.get("array", [])]
+        return None
+    return None
+
+
+def extract_page_properties(page: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "id": page.get("id", ""),
+        "url": page.get("url", ""),
+    }
+    raw_props = page.get("properties", {})
+    for name, prop in raw_props.items():
+        val = extract_property_value(prop)
+        if val is not None:
+            result[name] = val
     return result
 
 

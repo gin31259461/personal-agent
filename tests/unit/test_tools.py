@@ -45,3 +45,29 @@ async def test_sensitive_tools_require_confirmation():
     args = {"title": "午餐", "amount": 120, "date": date.today().isoformat()}
     result = await ToolExecutor(registry, Policy()).execute("expense", args)
     assert result.error_code == "CONFIRMATION_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_get_database_info_tool_execution():
+    from personal_agent.schemas.query import GetDatabaseInfoArgs
+
+    async def handler(args):
+        from personal_agent.schemas.common import ToolResult
+
+        return ToolResult.ok({"options": ["餐飲", "娛樂"]})
+
+    registry = ToolRegistry()
+    registry.register(
+        RegisteredTool(
+            "notion_get_database_info",
+            "Inspect database",
+            GetDatabaseInfoArgs,
+            handler,
+            ToolRisk.READ,
+        )
+    )
+    result = await ToolExecutor(registry, Policy()).execute(
+        "notion_get_database_info", {"database": "finance", "property": "Category"}
+    )
+    assert result.success is True
+    assert result.data["options"] == ["餐飲", "娛樂"]

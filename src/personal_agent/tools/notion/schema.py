@@ -8,6 +8,7 @@ class NotionSchemaCache:
     def __init__(self, client: NotionClient) -> None:
         self.client = client
         self._schemas: dict[str, dict[str, Any]] = {}
+        self._relation_page_cache: dict[tuple[str, str], str] = {}
 
     async def get_schema(self, data_source_id: str) -> dict[str, Any]:
         if data_source_id not in self._schemas:
@@ -25,12 +26,87 @@ class NotionSchemaCache:
     async def get_relation_target_data_source_id(self, data_source_id: str, property_name: str) -> str | None:
         schema = await self.get_schema(data_source_id)
         properties = schema.get("properties", {})
-        prop = properties.get(property_name)
-        if not prop or prop.get("type") != "relation":
+        # Exact or case-insensitive match
+        matched_prop = properties.get(property_name)
+        if not matched_prop:
+            for name, prop in properties.items():
+                if name.casefold() == property_name.casefold():
+                    matched_prop = prop
+                    break
+        if not matched_prop or matched_prop.get("type") != "relation":
             return None
-        rel = prop.get("relation", {})
+        rel = matched_prop.get("relation", {})
         target = rel.get("data_source_id") or rel.get("database_id")
         return str(target) if target else None
+
+    async def get_relation_options(self, target_data_source_id: str) -> list[dict[str, str]]:
+        target_title_prop = await self.get_title_property_name(target_data_source_id)
+        pages = await self.client.query_data_source(target_data_source_id, {"page_size": 100})
+        options: list[dict[str, str]] = []
+        for page in pages:
+            page_id = str(page.get("id", ""))
+            title_parts = page.get("properties", {}).get(target_title_prop, {}).get("title", [])
+            name = "".join(item.get("plain_text", "") for item in title_parts).strip()
+            self._relation_page_cache[(target_data_source_id, page_id)] = name or page_id
+            options.append({"id": page_id, "name": name or page_id})
+        return options
+
+    async def resolve_relation_names(self, target_data_source_id: str, page_ids: Sequence[str]) -> list[str]:
+        missing = [pid for pid in page_ids if (target_data_source_id, pid) not in self._relation_page_cache]
+        if missing:
+            await self.get_relation_options(target_data_source_id)
+        return [self._relation_page_cache.get((target_data_source_id, pid), pid) for pid in page_ids]
+
+    async def get_property_options(self, data_source_id: str, property_name: str) -> dict[str, Any]:
+        schema = await self.get_schema(data_source_id)
+        properties = schema.get("properties", {})
+        matched_name = None
+        for name in properties:
+            if name.casefold() == property_name.casefold():
+                matched_name = name
+                break
+        if not matched_name:
+            return {"error": f"Property '{property_name}' not found in database"}
+
+        prop = properties[matched_name]
+        prop_type = prop.get("type")
+        if prop_type in {"select", "status"}:
+            opts = [opt.get("name") for opt in prop.get(prop_type, {}).get("options", []) if opt.get("name")]
+            return {"property": matched_name, "type": prop_type, "options": opts}
+        if prop_type == "multi_select":
+            opts = [opt.get("name") for opt in prop.get("multi_select", {}).get("options", []) if opt.get("name")]
+            return {"property": matched_name, "type": prop_type, "options": opts}
+        if prop_type == "relation":
+            target_ds = await self.get_relation_target_data_source_id(data_source_id, matched_name)
+            if not target_ds:
+                return {"property": matched_name, "type": "relation", "options": []}
+            opts_data = await self.get_relation_options(target_ds)
+            names = [item["name"] for item in opts_data]
+            return {
+                "property": matched_name,
+                "type": "relation",
+                "target_data_source_id": target_ds,
+                "options": names,
+            }
+        return {"property": matched_name, "type": prop_type, "options": []}
+
+    async def get_database_summary(self, data_source_id: str) -> dict[str, Any]:
+        schema = await self.get_schema(data_source_id)
+        properties = schema.get("properties", {})
+        summary: dict[str, Any] = {}
+        for name, prop in properties.items():
+            p_type = prop.get("type")
+            info: dict[str, Any] = {"type": p_type}
+            if p_type in {"select", "status"}:
+                info["options"] = [opt.get("name") for opt in prop.get(p_type, {}).get("options", []) if opt.get("name")]
+            elif p_type == "multi_select":
+                info["options"] = [opt.get("name") for opt in prop.get("multi_select", {}).get("options", []) if opt.get("name")]
+            elif p_type == "relation":
+                rel = prop.get("relation", {})
+                target = rel.get("data_source_id") or rel.get("database_id")
+                info["target_data_source_id"] = str(target) if target else None
+            summary[name] = info
+        return {"data_source_id": data_source_id, "properties": summary}
 
     async def resolve_finance_properties(self, data_source_id: str, overrides: dict[str, str] | None = None) -> dict[str, str]:
         schema = await self.get_schema(data_source_id)

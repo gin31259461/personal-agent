@@ -20,14 +20,44 @@ class NotionSearchService:
         self.sources = sources
         self.schema_cache = schema_cache
 
+    async def _resolve_source(self, alias: str) -> tuple[str, str | None] | None:
+        if alias in self.sources:
+            return self.sources[alias]
+        if not self.schema_cache:
+            return None
+        tasks_ds = self.sources.get("tasks", (None,))[0]
+        finance_ds = self.sources.get("transactions", (None,))[0]
+        if alias == "categories" and finance_ds:
+            target_ds = await self.schema_cache.get_relation_target_data_source_id(finance_ds, "Category")
+            if target_ds:
+                self.sources["categories"] = (target_ds, None)
+                return self.sources["categories"]
+        if alias == "accounts" and finance_ds:
+            target_ds = await self.schema_cache.get_relation_target_data_source_id(finance_ds, "Account")
+            if target_ds:
+                self.sources["accounts"] = (target_ds, None)
+                return self.sources["accounts"]
+        if alias == "projects" and tasks_ds:
+            target_ds = await self.schema_cache.get_relation_target_data_source_id(tasks_ds, "Project")
+            if target_ds:
+                self.sources["projects"] = (target_ds, None)
+                return self.sources["projects"]
+        return None
+
     async def search(self, args: SearchNotionArgs) -> ToolResult:
-        aliases = [args.database] if args.database else list(self.sources)
+        if args.database:
+            aliases = [args.database]
+        else:
+            for rel_alias in ("categories", "accounts", "projects"):
+                await self._resolve_source(rel_alias)
+            aliases = list(self.sources)
         results: list[dict[str, object]] = []
         try:
             for alias in aliases:
-                if alias is None or alias not in self.sources:
+                source_info = await self._resolve_source(alias)
+                if not source_info:
                     continue
-                data_source_id, title_property = self.sources[alias]
+                data_source_id, title_property = source_info
                 if not title_property and self.schema_cache:
                     title_property = await self.schema_cache.get_title_property_name(data_source_id)
                 prop_name = title_property or "title"

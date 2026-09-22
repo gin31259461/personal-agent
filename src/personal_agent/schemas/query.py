@@ -29,3 +29,14 @@ class WebSearchArgs(StrictModel):
     query: str = Field(min_length=2, max_length=500)
     count: int = Field(default=5, ge=1, le=10)
     freshness_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class GetDatabaseInfoArgs(StrictModel):
+    database: str = Field(
+        default="finance",
+        description="Database name or alias to inspect ('finance', 'tasks', 'categories', 'projects', 'accounts')",
+    )
+    property: str | None = Field(
+        default=None,
+        description="Optional property name to get options for (e.g. 'Category', 'Status', 'Type', 'Account', 'Project')",
+    )
