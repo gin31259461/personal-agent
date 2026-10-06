@@ -16,7 +16,6 @@ from personal_agent.schemas.query import (
     ListTasksArgs,
     QueryExpensesArgs,
     SearchNotionArgs,
-    WebSearchArgs,
 )
 from personal_agent.schemas.task import CreateTaskArgs
 from personal_agent.storage.db import Database
@@ -30,7 +29,6 @@ from personal_agent.tools.notion.search import NotionSearchService
 from personal_agent.tools.notion.tasks import TaskService
 from personal_agent.tools.policy import Policy
 from personal_agent.tools.registry import ToolRegistry
-from personal_agent.tools.web_search import SearxngSearchService
 
 
 def _create_user_services(
@@ -194,20 +192,6 @@ def build_runtime(settings: Settings) -> AgentRuntime:
         )
     )
     closers = [notion.close]
-    web_search_url = settings.web_search_url or (settings.web_search.base_url if settings.web_search.enabled else None)
-    if web_search_url is not None:
-        web_search = SearxngSearchService(
-            str(web_search_url),
-            settings.web_search.timeout_seconds,
-            settings.web_search.max_results,
-            settings.web_search.max_response_bytes,
-        )
-        registry.register(
-            RegisteredTool(
-                "web_search", "Search the public web and return cited results.", WebSearchArgs, web_search.search, ToolRisk.READ
-            )
-        )
-        closers.append(web_search.close)
     registry.register(
         RegisteredTool(
             "notion_list_tasks",

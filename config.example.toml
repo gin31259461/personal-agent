@@ -30,12 +30,3 @@ data_source_id = "replace-with-finance-data-source-id"
 # data_source_id = "user1-tasks-data-source-id"
 # [notion.users."836446179431677992".finance]
 # data_source_id = "user1-finance-data-source-id"
-
-[web_search]
-# Legacy standalone switch. Nix deployments inject PERSONAL_AGENT_WEB_SEARCH_URL instead.
-enabled = false
-provider = "searxng"
-base_url = "http://127.0.0.1:8888"
-timeout_seconds = 15
-max_results = 10
-max_response_bytes = 262144

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -81,27 +81,11 @@ class NotionSettings(StrictModel):
         return self.default
 
 
-class WebSearchSettings(StrictModel):
-    enabled: bool = False
-    provider: Literal["searxng"] = "searxng"
-    base_url: HttpUrl = HttpUrl("http://127.0.0.1:8888")
-    timeout_seconds: Annotated[float, Field(gt=0, le=60)] = 15
-    max_results: Annotated[int, Field(gt=0, le=25)] = 10
-    max_response_bytes: Annotated[int, Field(gt=1024, le=1048576)] = 262144
-
-
-class RuntimeCapabilities(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PERSONAL_AGENT_", extra="ignore", hide_input_in_errors=True)
-
-    web_search_url: HttpUrl | None = None
-
-
 class ApplicationConfig(StrictModel):
     app: AppSettings
     discord: DiscordSettings
     llm: LLMSettings = LLMSettings()
     notion: NotionSettings
-    web_search: WebSearchSettings = WebSearchSettings()
 
     @classmethod
     def from_toml(cls, path: Path) -> "ApplicationConfig":
@@ -121,21 +105,11 @@ class RuntimeSecrets(BaseSettings):
 class Settings(ApplicationConfig):
     discord_token: SecretStr
     notion_token: SecretStr
-    web_search_url: HttpUrl | None = None
 
     @classmethod
     def from_toml(cls, path: Path, env_file: Path | None = None) -> "Settings":
         config = ApplicationConfig.from_toml(path)
         secrets_type = cast(Any, RuntimeSecrets)
         secrets = cast(RuntimeSecrets, secrets_type(_env_file=env_file))
-        capabilities_type = cast(Any, RuntimeCapabilities)
-        capabilities = cast(RuntimeCapabilities, capabilities_type(_env_file=env_file))
-        data = config.model_dump() | secrets.model_dump() | capabilities.model_dump()
-        settings = cls.model_validate(data)
-        if (
-            settings.web_search_url is not None
-            and settings.web_search.enabled
-            and str(settings.web_search_url).rstrip("/") != str(settings.web_search.base_url).rstrip("/")
-        ):
-            raise ValueError("web search environment and legacy config URLs conflict")
-        return settings
+        data = config.model_dump() | secrets.model_dump()
+        return cls.model_validate(data)

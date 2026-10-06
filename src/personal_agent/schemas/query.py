@@ -25,11 +25,6 @@ class SearchNotionArgs(StrictModel):
     limit: int = Field(default=10, ge=1, le=25)
 
 
-class WebSearchArgs(StrictModel):
-    query: str = Field(min_length=2, max_length=500)
-    count: int = Field(default=5, ge=1, le=10)
-    freshness_days: int | None = Field(default=None, ge=1, le=3650)
-
 
 class GetDatabaseInfoArgs(StrictModel):
     database: str = Field(

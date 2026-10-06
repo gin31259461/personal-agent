@@ -10,7 +10,7 @@ Personal Discord assistant backed by an OpenAI-compatible llama-swap endpoint an
 - Restrict requests to configured Discord users in one guild and channel.
 - Convert supported Markdown headings, lists, checkboxes, quotes, code blocks, emphasis, inline code, and links into Notion blocks.
 - Resolve Task projects and transaction categories/accounts through validated Notion relations.
-- Search configured Notion data sources and optionally search the web through a fixed SearXNG endpoint.
+- Search configured Notion data sources.
 
 ## Nix package
 
@@ -53,10 +53,6 @@ Normal conversation uses Discord's typing indicator and receives a direct reply.
 created after the model requests a tool; it is updated with the final reply or `Failed` status. Multi-turn conversation context is preserved
 per-channel in SQLite with a 2-hour sliding window. Structured clarification state expires after
 `app.clarification_ttl_seconds` and handles missing relation or argument retries.
-
-Nix-managed deployments enable web search by setting `PERSONAL_AGENT_WEB_SEARCH_URL`; its presence registers the
-tool. Standalone deployments may use the legacy `web_search.enabled` and `web_search.base_url` TOML settings. If both
-are set, their URLs must match.
 
 ## Configuration
 
